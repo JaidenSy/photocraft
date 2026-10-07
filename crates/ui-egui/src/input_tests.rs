@@ -269,3 +269,48 @@ fn kerning_field_values() {
         assert_eq!(crate::type_tool::parse_kerning(s), None, "{s}");
     }
 }
+
+/// One frame of finger events as eframe's web runner sends them (iPad Safari): touch `id` 0 is
+/// also the egui pointer.
+fn fingers(h: &mut Harness<'static, PhotocraftApp>, phase: egui::TouchPhase, touches: &[(u64, Pos2)]) {
+    use egui::{Event, PointerButton, TouchDeviceId, TouchId};
+    for &(id, pos) in touches {
+        if id == 0 {
+            h.event(Event::PointerMoved(pos));
+            match phase {
+                egui::TouchPhase::Start => h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed: true, modifiers: Modifiers::NONE }),
+                egui::TouchPhase::End => h.event(Event::PointerButton { pos, button: PointerButton::Primary, pressed: false, modifiers: Modifiers::NONE }),
+                _ => {}
+            }
+        }
+        h.event(Event::Touch { device_id: TouchDeviceId(1), id: TouchId(id), phase, pos, force: None });
+    }
+    h.run_steps(1);
+}
+
+#[test]
+fn two_finger_touch_pans_and_pinch_zooms_without_painting() {
+    let mut h = harness();
+    h.state_mut().ui.tool = crate::state::Tool::Brush;
+    let rev = h.state().session.documents()[0].revision;
+    let z0 = zoom(&h);
+    let c = h.state().last_canvas_rect.center();
+    // The first finger lands and starts a stroke before the second one arrives.
+    fingers(&mut h, egui::TouchPhase::Start, &[(0, c)]);
+    for i in 1..=3 {
+        fingers(&mut h, egui::TouchPhase::Move, &[(0, c + vec2(10.0 * i as f32, 0.0))]);
+    }
+    let a = c + vec2(30.0, 0.0);
+    let b = c + vec2(130.0, 0.0);
+    fingers(&mut h, egui::TouchPhase::Start, &[(1, b)]);
+    // Spread the fingers apart while dragging both down: zoom in and pan.
+    for i in 1..=5 {
+        let f = i as f32;
+        fingers(&mut h, egui::TouchPhase::Move, &[(0, a + vec2(-10.0 * f, 8.0 * f)), (1, b + vec2(10.0 * f, 8.0 * f))]);
+    }
+    fingers(&mut h, egui::TouchPhase::End, &[(0, a + vec2(-50.0, 40.0)), (1, b + vec2(50.0, 40.0))]);
+    h.run_steps(3);
+    assert!(zoom(&h) > z0 * 1.2, "pinch zooms in: {z0} -> {}", zoom(&h));
+    assert!(h.state().drag.is_none(), "the first finger's stroke is dropped");
+    assert_eq!(h.state().session.documents()[0].revision, rev, "a two-finger gesture never paints");
+}
