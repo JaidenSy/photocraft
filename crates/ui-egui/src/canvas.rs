@@ -1514,9 +1514,17 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
     let temporary = crate::hold_keys::for_frame(app, &ctx, drawing);
     let space_pan = temporary == Some(crate::hold_keys::Temporary::Hand);
     let middle = ui.input(|i| i.pointer.middle_down());
+    // Two fingers on a touch screen (iPad) pan and pinch-zoom through wheel_nav; they never paint.
+    // A stroke the first finger started before the second landed is dropped, not committed.
+    let multi_touch = ui.input(|i| i.multi_touch().is_some());
+    if multi_touch && app.drag.is_some() {
+        app.drag = None;
+        app.live_stroke = None;
+        app.trail = None;
+    }
     let tool = match temporary {
         Some(t) => t.tool(),
-        None if middle => Tool::Hand,
+        None if middle || multi_touch => Tool::Hand,
         None => app.ui.tool,
     };
     // Zoom direction: the temporary zoom key decides, else ⌥ (Zoom tool).
@@ -1535,7 +1543,7 @@ pub fn canvas_view(app: &mut PhotocraftApp, ui: &mut egui::Ui, idx: usize, rect:
             ctx.set_cursor_icon(egui::CursorIcon::Grab);
         }
     }
-    if tool == Tool::Hand && response.dragged() {
+    if tool == Tool::Hand && response.dragged() && !multi_touch {
         let d = response.drag_delta();
         view.center[0] -= d.x / view.zoom * if flip { -1.0 } else { 1.0 };
         view.center[1] -= d.y / view.zoom;

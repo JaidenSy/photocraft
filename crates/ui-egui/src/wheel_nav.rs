@@ -2,6 +2,7 @@
 //!
 //! - Scrolling pans (Shift scrolls sideways; egui folds that in).
 //! - Pinch, or ⌘/Ctrl + scroll, zooms around the pointer (egui's zoom gesture).
+//! - On a touch screen, a two-finger drag pans.
 //! - ⌥/Alt + scroll zooms around the pointer in gentle steps, about 5% per wheel notch, as in
 //!   Photoshop with Preferences › General › Zoom with Scroll Wheel off.
 //! - With Zoom with Scroll Wheel on, a plain scroll zooms too.
@@ -27,7 +28,7 @@ pub enum Wheel {
 /// Inputs of one frame's wheel gesture.
 #[derive(Clone, Copy, Debug)]
 pub struct Input {
-    /// Smoothed scroll delta (points, content direction).
+    /// Smoothed scroll delta, or a two-finger touch drag (points, content direction).
     pub scroll: Vec2,
     /// egui's pinch / ⌘-scroll zoom factor (1 = none).
     pub zoom_delta: f32,
@@ -74,7 +75,7 @@ pub fn read(ctx: &Context, zoom_with_wheel: bool) -> Option<Wheel> {
             Event::MouseWheel { modifiers, .. } => Some(modifiers.alt && !modifiers.command && !modifiers.ctrl),
             _ => None,
         });
-        (i.smooth_scroll_delta, i.zoom_delta(), latest)
+        (i.translation_delta(), i.zoom_delta(), latest)
     });
     let alt = match latest {
         Some(a) => {
